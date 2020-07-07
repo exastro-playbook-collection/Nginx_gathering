@@ -1,0 +1,14 @@
+---
+# not check `ANSIBLE0006` by ansible-lint
+# not check `COMPLIANCE020201` by ansible-lint
+- name: check nginx status
+  shell: 'systemctl list-unit-files|grep nginx.service >> {{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/nginxState.txt'
+  register: nginx_status
+  changed_when: true
+  ignore_errors: yes
+
+- name: copy nginx.conf from target host to manager host
+  fetch:
+    src: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/nginxState.txt"
+    dest: "{{ VAR_Nginx_gathering_dest }}/{{ inventory_hostname }}/Nginx_gathering/nginxState.txt"
+    flat: yes

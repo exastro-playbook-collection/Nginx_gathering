@@ -1,0 +1,118 @@
+---
+- name: mkdir work directory
+  file:
+    path: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}"
+    state: directory
+    mode: '0777'
+
+- name: mkdir localhost work directory
+  file:
+    path: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}"
+    state: directory
+    mode: '0777'
+  delegate_to: localhost
+
+- name: set param _install_path
+  set_fact:
+    _install_path: "{{ _nginx_install_state.stdout | trim()}}"
+
+- name: check nginx.conf ok
+  command: "{{ _install_path }} -t"
+  changed_when: true
+  register: _nginxConf_ok
+  ignore_errors: yes
+  become: yes
+
+- name: nginx.conf is not ok
+  fail:
+    msg: "The target machine's nginx configuration file is incorrect, please modify."
+  when: "'nginx.conf test is successful' not in _nginxConf_ok.stderr"
+
+- name: get nginx.conf path
+  set_fact:
+    _nginxConfPath: "{{ _nginxConf_ok.stderr.split('nginx: configuration file ')[1].split(' test is successful')[0] }}"
+
+- name: copy nginxToJson.py on manager host
+  copy:
+    src: getConf.py
+    dest: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/"
+
+- name: call python to get
+  command: "python getConf.py {{ _nginxConfPath }} {{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/"
+  args:
+    chdir: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/"
+  changed_when: true
+
+- name: get confPathList.txt
+  command: "cat confPathList.txt"
+  args:
+    chdir: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/"
+  register: _confPathList
+  changed_when: true
+
+- name: copy sub.conf from target host to manager host
+  fetch:
+    src: "{{ item }}"
+    dest: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf_root/{{ item }}"
+    flat: yes
+  with_items: "{{ _confPathList.stdout_lines }}"
+
+- name: copy nginx.conf from target host to manager host
+  fetch:
+    src: "{{ _nginxConfPath }}"
+    dest: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf_root{{ _nginxConfPath }}"
+    flat: yes
+
+- name: copy confPathList.txt from target host to manager host
+  fetch:
+    src: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/confPathList.txt"
+    dest: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/confPathList.txt"
+    flat: yes
+
+- name: copy setConfPath.py on manager host
+  copy:
+    src: "{{ item }}"
+    dest: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/"
+  delegate_to: localhost
+  with_items:
+    - setConfPath.py
+    - setServerConfPath.py
+
+- name: set conf include path
+  command: "python setConfPath.py {{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/confPathList.txt {{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf_root"
+  changed_when: true
+  args:
+    chdir: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/"
+  delegate_to: localhost
+
+- name: set nginx.conf include path
+  command: "python setServerConfPath.py {{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf_root{{ _nginxConfPath }} {{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf_root"
+  changed_when: true
+  args:
+    chdir: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf/"
+  delegate_to: localhost
+
+- name: parse nginx.conf into nginx.json on manager host
+  command: "crossplane parse -o {{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/nginx.json {{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/conf_root{{ _nginxConfPath }}"
+  changed_when: true
+  delegate_to: localhost
+
+- name: mkdir Nginx_gathering directory
+  file:
+    path: "{{ VAR_Nginx_gathering_dest }}/{{ inventory_hostname }}/Nginx_gathering"
+    state: directory
+    mode: '0777'
+  delegate_to: localhost
+
+- name: Copy data
+  copy:
+    src: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}/nginx.json"
+    dest: "{{ VAR_Nginx_gathering_dest }}/{{ inventory_hostname }}/Nginx_gathering/nginx.json"
+  delegate_to: localhost
+  become: no
+
+- name: delete Nginx conf directory
+  file:
+    path: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup"
+    state: absent
+  delegate_to: localhost

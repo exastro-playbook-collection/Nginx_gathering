@@ -1,0 +1,34 @@
+---
+- name: check param VAR_Nginx_gathering_dest
+  fail:
+    msg: "Parameter VAR_Nginx_gathering_dest cannot be NULL."
+  when: "(VAR_Nginx_gathering_dest is none) or (VAR_Nginx_gathering_dest == '')"
+
+- name: Remove localhost old data
+  file:
+    path: "{{ VAR_Nginx_gathering_dest }}/{{ inventory_hostname }}/Nginx_gathering"
+    state: absent
+  delegate_to: localhost
+  become: no
+
+- name: Remove target host old data
+  file:
+    path: "{{ VAR_Nginx_tmpDir }}/Nginx_Setup/{{ inventory_hostname }}"
+    state: absent
+
+- name: query nginx installed
+  shell: "find / -name nginx | grep '/sbin/nginx'"
+  register: _nginx_install_state
+  changed_when: true
+  ignore_errors: yes
+
+- name: fail when nginx uninstalled
+  fail:
+    msg: "Nginx is not installed, please install."
+  when: "'/sbin/nginx' not in _nginx_install_state.stdout"
+
+- name: include tasks
+  include_tasks: gather_setup.yml
+
+- name: include tasks
+  include_tasks: gather_ossetup.yml

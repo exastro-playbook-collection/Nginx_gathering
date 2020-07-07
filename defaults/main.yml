@@ -1,0 +1,3 @@
+---
+VAR_Nginx_tmpDir: /tmp
+VAR_Nginx_gathering_dest: '{{ playbook_dir }}/_gathered_data'
